@@ -1,5 +1,6 @@
 import { Suspense, lazy, useRef, useState } from "react";
 import { OrbitControls } from "@react-three/drei";
+import { folder, useControls } from "leva";
 import * as THREE from "three";
 import { Avatar } from "./Avatar";
 import { Billboard } from "./Billboard";
@@ -42,6 +43,52 @@ export const Experience = ({ focused, onFocusChange, onIntroDone }) => {
   // Empties at the centre of each billboard panel, for the camera to fly to.
   const faces = useRef([]);
 
+  // Declared once here rather than inside Billboard: four instances calling
+  // useControls with the same schema would fight over the same leva paths.
+  const signage = useControls({
+    Billboards: folder({
+      labelColor: { value: "#e6e6ea", label: "sign color" },
+      labelEmissive: { value: "#ff6a3d", label: "sign glow color" },
+      labelGlow: { value: 1.1, min: 0, max: 5, step: 0.05, label: "sign glow" },
+      // Off: the five bulbs and beams per board read as clutter against
+      // the lit signage.
+      lamps: { value: false, label: "projectors" },
+      // Off by default: five real lights per board (twenty in total) overran
+      // the shader's light budget on some GPUs and blanked every lit model.
+      castLight: { value: false, label: "real light (1/board)" },
+      lampIntensity: {
+        value: 6,
+        min: 0,
+        max: 60,
+        step: 0.5,
+        label: "projector power",
+      },
+      lampAngle: {
+        value: 0.5,
+        min: 0.05,
+        max: 1.2,
+        step: 0.01,
+        label: "beam angle",
+      },
+      lampPenumbra: {
+        value: 0.65,
+        min: 0,
+        max: 1,
+        step: 0.05,
+        label: "beam softness",
+      },
+      lampColor: { value: "#fff1d6", label: "projector color" },
+      beams: { value: true, label: "visible beams" },
+      beamOpacity: {
+        value: 0.28,
+        min: 0,
+        max: 1,
+        step: 0.02,
+        label: "beam opacity",
+      },
+    }),
+  });
+
   const isFocused = focused !== null;
 
   const groundHandlers = useClickWithoutDrag((event) => {
@@ -68,6 +115,7 @@ export const Experience = ({ focused, onFocusChange, onIntroDone }) => {
           <Billboard
             key={index}
             {...billboard}
+            signage={signage}
             faceRef={(node) => (faces.current[index] = node)}
             showSpot={!isFocused}
             interactive={focused === index}

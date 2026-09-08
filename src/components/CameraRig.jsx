@@ -98,8 +98,6 @@ export function CameraRig({ targetRef, focusObject, onIntroDone }) {
   const savedPose = useRef(null);
   const savedLimits = useRef(null);
   const intro = useRef({ elapsed: 0, running: true });
-  const __scene = useThree((state) => state.scene);
-  useEffect(() => { window.__probe = { camera, scene: __scene }; }, [camera, __scene]);
 
   // Everything in the scene suspends while it loads, so this component only
   // mounts once the models, fonts and pages are ready — which makes mount
@@ -264,7 +262,12 @@ export function CameraRig({ targetRef, focusObject, onIntroDone }) {
     // and before drei's <Html> reads it (0). Without this the billboard
     // pages were positioned from the previous frame's camera and visibly
     // led the panels during the fly-in.
-  });
+  }, -2);
+
+  // OrbitControls re-aims the camera at -1, after the block above, so the
+  // matrix has to be refreshed between that and <Html> at 0. Fractional
+  // priorities sort fine, and only priority > 0 would disable auto-render.
+  useFrame(() => camera.updateMatrixWorld(), -0.5);
 
   return null;
 }

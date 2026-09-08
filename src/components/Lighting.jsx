@@ -100,6 +100,12 @@ export function Lighting({ targetRef }) {
       contactBlur: { value: 1, min: 0, max: 5, step: 0.1, label: "contact blur" },
       contactScale: { value: 10, min: 2, max: 40, step: 1, label: "contact size" },
     }),
+    Atmosphere: folder({
+      fog: { value: true, label: "fog" },
+      fogColor: { value: "#303035", label: "fog color" },
+      fogNear: { value: 18, min: 0, max: 80, step: 1, label: "fog near" },
+      fogFar: { value: 62, min: 5, max: 200, step: 1, label: "fog far" },
+    }),
     Renderer: folder({
       exposure: { value: 1, min: 0, max: 3, step: 0.05 },
     }),
@@ -127,6 +133,15 @@ export function Lighting({ targetRef }) {
 
   return (
     <>
+      {/* Blends the floor's far edge into the page background, which becomes
+          visible once the camera drops toward the horizon. */}
+      {settings.fog && (
+        <fog
+          attach="fog"
+          args={[settings.fogColor, settings.fogNear, settings.fogFar]}
+        />
+      )}
+
       <Environment
         preset={settings.envPreset}
         background={settings.envAsBackground}

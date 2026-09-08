@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { DoubleSide } from "three";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AdditiveBlending,
+  BufferAttribute,
+  CylinderGeometry,
+  DoubleSide,
+  Object3D,
+} from "three";
 import { Center, Html, Text3D, useGLTF } from "@react-three/drei";
 import { useClickWithoutDrag } from "./useClickWithoutDrag";
 
@@ -23,16 +29,25 @@ const SCREEN_HEIGHT_PX = Math.round((SCREEN_WIDTH_PX * FACE_HEIGHT) / FACE_WIDTH
 const HTML_PX_PER_UNIT = 40;
 const SCREEN_SCALE = (FACE_WIDTH * HTML_PX_PER_UNIT) / SCREEN_WIDTH_PX;
 
-// The extruded section name hanging below the panel. Sits in front of the
-// pole and below the lamp housings (which top out at y=132) so nothing
-// intersects.
+// The extruded section name, mounted on top of the panel like signage.
+// The panel's top edge is at y=229.4, so this clears it with a small gap.
 const LABEL_FONT = "/fonts/helvetiker_bold.typeface.json";
 // Sized so the longest label ("experience") sits at roughly half the
 // panel's 203-unit width, rather than crowding the neighbouring board.
 const LABEL_SIZE = 18;
 const LABEL_DEPTH = 3.5;
-const LABEL_Y = 105;
+const LABEL_Y = 248;
 const LABEL_Z = 15;
+
+// The five projector housings, measured out of Billboard.glb by clustering
+// the lamp mesh along x. They sit below and in front of the panel, so they
+// throw light up and back across it.
+const LAMP_X = [-70.55, -36.3, -2.3, 36.4, 70.35];
+const LAMP_Y = 129.8;
+const LAMP_Z = 37.45;
+// Where each lamp is aimed: the panel face, directly above the fixture.
+const LAMP_AIM_Y = 185.67;
+const LAMP_AIM_Z = 9.37;
 
 // The "stand here to read this" marker, on the ground in front of the panel.
 const SPOT_Z = 90;
@@ -41,10 +56,111 @@ const SPOT_OUTER_RADIUS = 34;
 // Lifted a hair off the floor so it doesn't z-fight with the grid.
 const SPOT_LIFT = 1;
 
+// The beam is drawn as geometry rather than as a real light. Twenty spot
+// lights compiled NUM_SPOT_LIGHTS=20 into every lit material's shader, which
+// overruns the uniform limit on some drivers: the program fails to link and
+// every lit model disappears while unlit things carry on rendering. The cones
+// are what you actually see anyway, since the panel is covered by the page.
+const BEAM_LENGTH = 62;
+const BEAM_TOP_RADIUS = 1.5;
+const BEAM_BOTTOM_RADIUS = 24;
+
+// Every lamp sits at the same height and depth and aims at the same height
+// and depth, so all five share one geometry and one rotation.
+function buildBeamGeometry() {
+  const geometry = new CylinderGeometry(
+    BEAM_TOP_RADIUS,
+    BEAM_BOTTOM_RADIUS,
+    BEAM_LENGTH,
+    20,
+    8,
+    true
+  );
+
+  // Per-vertex alpha fades the beam out along its throw. three enables
+  // USE_COLOR_ALPHA automatically when the colour attribute is a vec4.
+  const position = geometry.attributes.position;
+  const colors = new Float32Array(position.count * 4);
+  for (let i = 0; i < position.count; i++) {
+    const along = (position.getY(i) + BEAM_LENGTH / 2) / BEAM_LENGTH;
+    colors[i * 4 + 0] = 1;
+    colors[i * 4 + 1] = 1;
+    colors[i * 4 + 2] = 1;
+    colors[i * 4 + 3] = Math.pow(along, 1.7);
+  }
+  geometry.setAttribute("color", new BufferAttribute(colors, 4));
+
+  // Put the narrow end at the origin and point the cone down +Z.
+  geometry.translate(0, -BEAM_LENGTH / 2, 0);
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
+}
+
+const beamGeometry = buildBeamGeometry();
+const beamRotation = (() => {
+  const helper = new Object3D();
+  helper.lookAt(0, LAMP_AIM_Y - LAMP_Y, LAMP_AIM_Z - LAMP_Z);
+  return helper.rotation.clone();
+})();
+
+/** One projector: a visible beam and a glowing bulb. */
+function Lamp({ x, settings }) {
+  return (
+    <>
+      {settings.beams && (
+        <mesh
+          geometry={beamGeometry}
+          position={[x, LAMP_Y, LAMP_Z]}
+          rotation={beamRotation}
+          raycast={() => null}
+        >
+          <meshBasicMaterial
+            color={settings.lampColor}
+            vertexColors
+            transparent
+            opacity={settings.beamOpacity}
+            blending={AdditiveBlending}
+            depthWrite={false}
+            side={DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+
+      {/* The bulb itself. Unlit basic material so it always reads as "on". */}
+      <mesh position={[x, LAMP_Y - 1.5, LAMP_Z - 1.5]}>
+        <sphereGeometry args={[2.4, 12, 12]} />
+        <meshBasicMaterial color={settings.lampColor} toneMapped={false} />
+      </mesh>
+    </>
+  );
+}
+
+/** A single real spot light for the whole panel, off by default. */
+function PanelLight({ settings }) {
+  const aim = useMemo(() => new Object3D(), []);
+  return (
+    <>
+      <primitive object={aim} position={[0, LAMP_AIM_Y, LAMP_AIM_Z]} />
+      <spotLight
+        position={[0, LAMP_Y, LAMP_Z]}
+        target={aim}
+        angle={settings.lampAngle}
+        penumbra={settings.lampPenumbra}
+        intensity={settings.lampIntensity}
+        color={settings.lampColor}
+        distance={0}
+        decay={0}
+      />
+    </>
+  );
+}
+
 export function Billboard({
   url,
   label,
   standColor = "#dd0000",
+  signage,
   faceRef,
   showSpot = false,
   interactive = false,
@@ -96,6 +212,15 @@ export function Billboard({
         material={materials["Mat.3"]}
       />
 
+      {signage.lamps &&
+        LAMP_X.map((x, index) => (
+          <Lamp key={index} x={x} settings={signage} />
+        ))}
+
+      {/* Optional real illumination: one light per board, not five, so the
+          scene stays well inside the shader's light budget. */}
+      {signage.castLight && <PanelLight settings={signage} />}
+
       {label && (
         <Center position={[0, LABEL_Y, LABEL_Z]}>
           <Text3D
@@ -109,10 +234,14 @@ export function Billboard({
             bevelSegments={3}
           >
             {label}
+            {/* Emissive so the sign reads as lit from within, like an ad,
+                rather than relying on the scene lights reaching up here. */}
             <meshStandardMaterial
-              color="#e6e6ea"
-              metalness={0.55}
-              roughness={0.35}
+              color={signage.labelColor}
+              emissive={signage.labelEmissive}
+              emissiveIntensity={signage.labelGlow}
+              metalness={0.4}
+              roughness={0.4}
             />
           </Text3D>
         </Center>
