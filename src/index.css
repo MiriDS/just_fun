@@ -63,3 +63,66 @@ body {
     opacity: 1;
   }
 }
+
+.chat {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Alongside the back button, above the billboard panels. */
+  z-index: 500;
+  width: min(420px, calc(100vw - 40px));
+}
+
+.chat__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  font: 400 13px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #f2f2f4;
+  background: rgba(24, 24, 28, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  outline: none;
+  backdrop-filter: blur(6px);
+}
+
+.chat__input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.chat__input:focus {
+  border-color: rgba(255, 106, 61, 0.65);
+}
+
+/* Lives inside a drei <Html> over an avatar's head. The wrapper is already
+   pointer-events: none, so this never intercepts a click on the floor, and it
+   carries the definite width this hugs up to — see ChatBubble.jsx. */
+.chat-bubble {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  padding: 7px 11px;
+  font: 400 12px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #f2f2f4;
+  /* Long words and pasted URLs break instead of stretching the bubble off
+     the side of the screen. Deliberately not `anywhere`, which would drag the
+     min-content width down to a single character. */
+  overflow-wrap: break-word;
+  background: rgba(24, 24, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  animation: chat-bubble-in 180ms ease both;
+}
+
+@keyframes chat-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -7,6 +7,7 @@ import {
 } from "@react-three/rapier";
 import { useFrame } from "@react-three/fiber";
 import { button, folder, useControls } from "leva";
+import { BILLBOARD_COLLIDERS, BILLBOARD_KEEP_OUT } from "./billboards";
 
 const GROUND_Y = -0.5;
 
@@ -36,10 +37,7 @@ const SCATTER_INNER = 2;
 // rings you click to focus, and the avatar's starting spot.
 const KEEP_OUT = [
   [0, 0, 1.6],
-  ...[0, 5, 10, 15].flatMap((x) => [
-    [x, -2, 1.6],
-    [x, -0.2, 1.2],
-  ]),
+  ...BILLBOARD_KEEP_OUT,
 ];
 
 const PALETTE = [
@@ -137,11 +135,11 @@ export function Scatter({ targetRef }) {
 
   const { count, seed, gravity, bounciness, showColliders } = useControls({
     Physics: folder({
-      count: { value: 26, min: 0, max: 80, step: 1, label: "objects" },
-      seed: { value: 7, min: 1, max: 999, step: 1, label: "seed" },
-      gravity: { value: 9.81, min: 0, max: 30, step: 0.1, label: "gravity" },
+      count: { value: 40, min: 0, max: 80, step: 1, label: "objects" },
+      seed: { value: 1, min: 1, max: 999, step: 1, label: "seed" },
+      gravity: { value: 5.9, min: 0, max: 30, step: 0.1, label: "gravity" },
       bounciness: {
-        value: 0.28,
+        value: 0.68,
         min: 0,
         max: 1,
         step: 0.02,
@@ -207,10 +205,15 @@ export function Scatter({ targetRef }) {
 
   return (
     <Physics gravity={[0, -gravity, 0]} debug={showColliders}>
-      {/* Floor. Half-height 0.5 centred at -1 puts its surface exactly on
-          the visual ground plane. */}
+      {/* The static world: the floor, and the billboards. Half-height 0.5
+          centred at -1 puts the floor's surface exactly on the visual ground
+          plane. The billboard boxes are measured out of the model — a pillar
+          apiece, with the panel overhead for anything thrown at it. */}
       <RigidBody type="fixed" colliders={false}>
         <CuboidCollider args={[60, 0.5, 60]} position={[0, GROUND_Y - 0.5, 0]} />
+        {BILLBOARD_COLLIDERS.map((box, index) => (
+          <CuboidCollider key={index} args={box.args} position={box.position} />
+        ))}
       </RigidBody>
 
       <AvatarBody targetRef={targetRef} />

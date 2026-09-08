@@ -103,11 +103,11 @@ export function Lighting({ targetRef }) {
     Atmosphere: folder({
       fog: { value: true, label: "fog" },
       fogColor: { value: "#303035", label: "fog color" },
-      fogNear: { value: 18, min: 0, max: 80, step: 1, label: "fog near" },
-      fogFar: { value: 62, min: 5, max: 200, step: 1, label: "fog far" },
+      fogNear: { value: 23, min: 0, max: 80, step: 1, label: "fog near" },
+      fogFar: { value: 59, min: 5, max: 200, step: 1, label: "fog far" },
     }),
     Renderer: folder({
-      exposure: { value: 1, min: 0, max: 3, step: 0.05 },
+      exposure: { value: 0.85, min: 0, max: 3, step: 0.05 },
     }),
     "Copy settings": button(() => {
       const json = JSON.stringify(latest.current, null, 2);
