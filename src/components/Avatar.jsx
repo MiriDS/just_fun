@@ -89,14 +89,33 @@ export function Avatar({ motion, positionRef, children, ...props }) {
     danceAnimation[0].name = "Dance";
     crouchAnimation[0].name = "Crouch";
 
-    return [
+    const clips = [
       idleAnimation[0],
       walkingAnimation[0],
       runningAnimation[0],
       danceAnimation[0],
       crouchAnimation[0],
     ];
+
+    // Mixamo exports one track per clip for the armature root — named
+    // "Armature_1" — and our character's armature is called "Armature", so it
+    // binds to nothing and three warns about it. 53 of the 54 tracks are
+    // bones and bind fine; dropping the odd one out is the difference between
+    // a clean console and one warning per clip per avatar in the room.
+    //
+    // The clips come from drei's cache and are shared by every avatar, so
+    // this runs once and is a no-op for everyone after.
+    const nodes = new Set();
+    model.traverse((child) => nodes.add(child.name));
+    for (const clip of clips) {
+      clip.tracks = clip.tracks.filter((track) =>
+        nodes.has(track.name.split(".")[0])
+      );
+    }
+
+    return clips;
   }, [
+    model,
     idleAnimation,
     walkingAnimation,
     runningAnimation,
@@ -111,8 +130,17 @@ export function Avatar({ motion, positionRef, children, ...props }) {
   const idleFor = useRef(0);
 
   useEffect(() => {
-    actions[animation].reset().fadeIn(0.5).play();
-    return () => actions[animation].fadeOut(0.5);
+    const action = actions[animation];
+    if (!action) return;
+
+    action.reset().fadeIn(0.5).play();
+
+    // Held in a variable rather than looked up a second time. drei's action
+    // getter returns undefined once the group ref is detached, and React
+    // detaches it before this cleanup runs on unmount — so the lookup that
+    // used to be here threw, and one player leaving took every other
+    // player's canvas down with it.
+    return () => action.fadeOut(0.5);
   }, [animation, actions]);
 
   // Before the first paint, so a remote player never shows up at the origin
