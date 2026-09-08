@@ -351,6 +351,34 @@ head, in every browser, for a few seconds.
   padding, caps length and rate, and logs nothing — but it does not filter
   what is actually said.
 
+### A trap worth remembering
+
+`Avatar` used to end its animation effect with
+`return () => actions[animation].fadeOut(0.5)`. That was fine for as long as
+there was exactly one avatar and it never unmounted. The moment remote players
+could leave, it crashed every other browser in the room and left them staring
+at the page background.
+
+drei's `actions` getter is `if (actualRef.current) { ... }` with no else — it
+returns **undefined** once the group ref is detached, and React detaches refs
+during the commit phase, before passive cleanups run. So never look an action
+up inside a cleanup; capture it when the effect runs.
+
+A second thing in the same console output was **not** related and **not** new:
+`THREE.PropertyBinding: Trying to update node for track: Armature_1.quaternion
+but it wasn't found.` Every Mixamo clip carries 54 tracks over 53 nodes — 53
+bones that bind fine, plus one for an armature root called `Armature_1`, which
+our character's GLB calls `Armature`. It was always there; multiplayer just
+multiplied it by the number of people in the room. `Avatar` now drops
+unbindable tracks when it names the clips, which is a no-op for every avatar
+after the first because the clips are shared out of drei's cache.
+
+Two things that were *not* the problem, checked at the time: three's
+`existingAction` guards its clip lookup with a truthy test, so drei's own
+`uncacheAction` cleanup no-ops rather than throwing; and R3F never disposes a
+`<primitive>` or recurses into one, so a departing avatar cannot dispose the
+geometry and materials it shares with yours.
+
 ### What is not done
 
 - **No name tags.** In-scene `Text` beats drei `Html` here (a DOM node per
