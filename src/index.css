@@ -1,0 +1,65 @@
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+body {
+  margin: 0;
+  background: #303035;
+}
+
+.back-button {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  /* Above the billboard panels (capped at 100), below the leva panel. */
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font: 500 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #f2f2f4;
+  background: rgba(24, 24, 28, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.back-button:hover {
+  background: rgba(48, 48, 56, 0.85);
+}
+
+.back-button__key {
+  padding: 2px 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
+}
+
+.skip-hint {
+  position: fixed;
+  bottom: 26px;
+  left: 0;
+  right: 0;
+  z-index: 500;
+  margin: 0;
+  text-align: center;
+  font: 400 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  pointer-events: none;
+  animation: skip-hint-in 900ms ease both;
+}
+
+@keyframes skip-hint-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

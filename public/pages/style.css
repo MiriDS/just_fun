@@ -1,0 +1,332 @@
+/* Shared styling for the billboard pages.
+
+   These render inside a 1440x620 iframe mapped onto the panel, so the
+   canvas is a wide letterbox (2.32:1) rather than a normal page. Every
+   layout here is built to fill that shape horizontally and fit without
+   scrolling. */
+
+:root {
+  --bg: #1c1c20;
+  --surface: #26262c;
+  --surface-2: #2e2e36;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #ececef;
+  --muted: #9a9aa6;
+  --accent: #c9736f;
+  --accent-dim: #9d4b4b;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  /* A faint vignette so the page reads as a lit screen rather than a
+     flat rectangle when it's mapped onto the panel. */
+  background-image: radial-gradient(
+    120% 140% at 50% 0%,
+    #24242a 0%,
+    #1a1a1e 70%
+  );
+  overflow-x: hidden;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 40px 56px 36px;
+}
+
+/* ---- header ---------------------------------------------------------- */
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.head__index {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.head__title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.head__tag {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* ---- body ------------------------------------------------------------ */
+
+.body {
+  display: grid;
+  gap: 30px;
+  flex: 1;
+  padding-top: 28px;
+}
+
+.cols-2 {
+  grid-template-columns: 1.15fr 0.85fr;
+  /* Two-column pages carry short content, so let the cards hug it instead
+     of stretching into a tall empty box. The three- and four-column pages
+     keep the default stretch, which keeps their rows level. */
+  align-items: start;
+}
+.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.card {
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.card--flat {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 12px;
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: #d3d3da;
+}
+
+p.lead {
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+ul {
+  margin: 0;
+  padding-left: 17px;
+}
+
+li {
+  margin-bottom: 5px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #c3c3cc;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* Marks text that is template filler, so it's obvious at a glance what
+   still needs replacing with real content. */
+.ph {
+  color: var(--accent);
+  border-bottom: 1px dashed rgba(201, 115, 111, 0.45);
+}
+
+/* ---- pieces ---------------------------------------------------------- */
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px 20px;
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.facts dt {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 2px;
+}
+
+.facts dd {
+  margin: 0;
+  color: #d8d8df;
+}
+
+.period {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.chip {
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: #dcdce3;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.chip--accent {
+  color: #f0cfcd;
+  background: rgba(157, 75, 75, 0.22);
+  border-color: rgba(201, 115, 111, 0.4);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(201, 115, 111, 0.35);
+}
+
+a:hover {
+  color: #e29b97;
+}
+
+.thumb {
+  height: 92px;
+  margin-bottom: 14px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #33333c 0%, #24242a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #6e6e7a;
+}
+
+.hint {
+  margin-top: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #6d6d78;
+}
+
+/* ---- density variants ------------------------------------------------- */
+
+/* Six roles have to share the same 620px of height, so this trims padding
+   and type for the experience grid without touching the other pages. */
+.grid-6 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 16px 22px;
+}
+
+.compact .card {
+  padding: 13px 16px;
+}
+
+.compact h3 {
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.compact .period {
+  font-size: 10.5px;
+  margin-bottom: 5px;
+}
+
+.compact .company {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.compact li {
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 3px;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.awards {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.award {
+  padding: 7px 12px;
+  font-size: 12.5px;
+  color: #f0cfcd;
+  background: rgba(157, 75, 75, 0.18);
+  border: 1px solid rgba(201, 115, 111, 0.35);
+  border-radius: 6px;
+}
+
+.meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}

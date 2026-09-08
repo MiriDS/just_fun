@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!--
+  Screenshots: drop images into public/pages/ and swap a .thumb div for
+  <img class="thumb" src="your-shot.png" alt="">
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Portfolio</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="head">
+        <span class="head__index">04</span>
+        <h1 class="head__title">Portfolio</h1>
+        <span class="head__tag">selected work</span>
+      </header>
+
+      <div class="body cols-4" style="grid-template-rows: auto auto">
+        <section class="card">
+          <div class="thumb">ADD SCREENSHOT</div>
+          <h3>AI Image Generation Platform</h3>
+          <p class="meta">Monks · 2025</p>
+          <p style="font-size: 13px; margin-bottom: 0">
+            Enterprise platform generating high-resolution assets at scale, with
+            async job pipelines that cut queue latency by 60%.
+          </p>
+          <div class="chips">
+            <span class="chip">React</span>
+            <span class="chip">Nest.js</span>
+            <span class="chip">RabbitMQ</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="thumb">ADD SCREENSHOT</div>
+          <h3>TapTut</h3>
+          <p class="meta">2024 — 2025</p>
+          <p style="font-size: 13px; margin-bottom: 0">
+            Full-stack architecture revamp built to hold 10,000+ concurrent
+            users, with a 40% cut in server response time.
+          </p>
+          <div class="chips">
+            <span class="chip">Nest.js</span>
+            <span class="chip">React Native</span>
+            <span class="chip">Socket.io</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="thumb">ADD SCREENSHOT</div>
+          <h3>OnBirNomre</h3>
+          <p class="meta">2024 — present</p>
+          <p style="font-size: 13px; margin-bottom: 0">
+            Location-driven mobile product with geospatial search on PostGIS and
+            realtime updates over Socket.io.
+          </p>
+          <div class="chips">
+            <span class="chip">React Native</span>
+            <span class="chip">Symfony</span>
+            <span class="chip">PostGIS</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="thumb">ADD SCREENSHOT</div>
+          <h3>ProspectAcademy</h3>
+          <p class="meta">NETTY Award winner</p>
+          <p style="font-size: 13px; margin-bottom: 0">
+            A learning platform taken from concept to launch, named Best
+            Educational Website of the Year.
+          </p>
+          <div class="chips">
+            <span class="chip">JavaScript</span>
+            <span class="chip">EdTech</span>
+          </div>
+        </section>
+
+        <section class="card card--flat" style="grid-column: span 4">
+          <p class="eyebrow">Recognition</p>
+          <div class="awards">
+            <span class="award">NETTY · Best Educational Website</span>
+            <span class="award">NETTY · Best Corporate Website</span>
+            <span class="award">NETTY · Best Product Website</span>
+            <span class="award">Most Productive &amp; Creative Team</span>
+          </div>
+        </section>
+      </div>
+    </div>
+    <script src="page.js"></script>
+  </body>
+</html>
