@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader } from "@react-three/drei";
+import { Loader, useProgress } from "@react-three/drei";
 import { Leva } from "leva";
 import { Canvas } from "@react-three/fiber";
 import { Experience } from "./components/Experience";
@@ -19,6 +19,10 @@ function App() {
   // render, so finishing the intro re-ran the effect that locks orbit input
   // and the camera stayed frozen.
   const handleIntroDone = useCallback(() => setIntroDone(true), []);
+  // The arrival sweep only begins once the scene has finished suspending, so
+  // the skip hint would otherwise sit over the loading screen with nothing
+  // to skip.
+  const { active: loading } = useProgress();
 
   useEffect(() => {
     if (focused === null) return;
@@ -61,7 +65,9 @@ function App() {
         />
       </Canvas>
 
-      {!introDone && <p className="skip-hint">click anywhere to skip</p>}
+      {!loading && !introDone && (
+        <p className="skip-hint">click anywhere to skip</p>
+      )}
 
       {focused !== null && (
         <button className="back-button" onClick={() => setFocused(null)}>
