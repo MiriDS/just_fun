@@ -1,12 +1,14 @@
-import { Suspense, lazy, useRef, useState } from "react";
+import { Suspense, lazy, useRef } from "react";
 import { OrbitControls } from "@react-three/drei";
 import { folder, useControls } from "leva";
-import * as THREE from "three";
 import { Avatar } from "./Avatar";
 import { Billboard } from "./Billboard";
+import { BILLBOARDS, BILLBOARD_SCALE } from "./billboards";
 import { CameraRig } from "./CameraRig";
+import { ChatBubble } from "./ChatBubble";
 import { Ground } from "./Ground";
 import { Lighting } from "./Lighting";
+import { RemotePlayers } from "./RemotePlayers";
 
 import { useClickWithoutDrag } from "./useClickWithoutDrag";
 
@@ -17,29 +19,19 @@ const Scatter = lazy(() =>
   import("./Scatter").then((module) => ({ default: module.Scatter }))
 );
 
-const BILLBOARDS = [
-  { position: [0, 0, -100], label: "about", url: "/pages/about.html" },
-  {
-    position: [250, 0, -100],
-    label: "experience",
-    url: "/pages/experience.html",
-  },
-  { position: [500, 0, -100], label: "skills", url: "/pages/skills.html" },
-  {
-    position: [750, 0, -100],
-    label: "portfolio",
-    url: "/pages/portfolio.html",
-  },
-];
-
-export const Experience = ({ focused, onFocusChange, onIntroDone }) => {
-  // Where the avatar is walking to, as [x, z]. null means "stay put".
-  const [target, setTarget] = useState(null);
-
-  // Live avatar position, written every frame by the Avatar and read by the
-  // camera rig and the contact shadow. A ref rather than state, so following
-  // costs no re-renders.
-  const avatarPosition = useRef(new THREE.Vector3(0, -0.5, 0));
+/**
+ * The scene itself. The local player — where they are walking, where they
+ * are standing, and their connection to everyone else — is owned by App,
+ * because the chat box that sends messages lives outside the Canvas.
+ */
+export const Experience = ({
+  focused,
+  onFocusChange,
+  onIntroDone,
+  motion,
+  avatarPosition,
+  presence,
+}) => {
   // Empties at the centre of each billboard panel, for the camera to fly to.
   const faces = useRef([]);
 
@@ -90,6 +82,7 @@ export const Experience = ({ focused, onFocusChange, onIntroDone }) => {
   });
 
   const isFocused = focused !== null;
+  const ownMessage = presence.messages[presence.selfId];
 
   const groundHandlers = useClickWithoutDrag((event) => {
     // While reading a billboard the floor is an exit, not a walk target.
@@ -97,7 +90,12 @@ export const Experience = ({ focused, onFocusChange, onIntroDone }) => {
       onFocusChange(null);
       return;
     }
-    setTarget([event.point.x, event.point.z]);
+
+    const target = [event.point.x, event.point.z];
+    motion.target = target;
+    // The click is the whole message: every other browser walks its copy of
+    // us with the same code and arrives at the same place.
+    presence.sendMove(target, avatarPosition.current);
   });
 
   return (
@@ -108,9 +106,22 @@ export const Experience = ({ focused, onFocusChange, onIntroDone }) => {
         <Scatter targetRef={avatarPosition} />
       </Suspense>
 
-      <Avatar position-y={-0.5} target={target} positionRef={avatarPosition} />
+      <Avatar position-y={-0.5} motion={motion} positionRef={avatarPosition}>
+        {!isFocused && ownMessage && (
+          <ChatBubble key={ownMessage.at} text={ownMessage.text} />
+        )}
+      </Avatar>
 
-      <group position={[0, -0.5, 0]} scale={0.02}>
+      <RemotePlayers
+        players={presence.players}
+        motions={presence.motions}
+        messages={presence.messages}
+        // Bubbles are hidden rather than moved while a page is being read:
+        // someone talking behind the panel would otherwise float over it.
+        muted={isFocused}
+      />
+
+      <group position={[0, -0.5, 0]} scale={BILLBOARD_SCALE}>
         {BILLBOARDS.map((billboard, index) => (
           <Billboard
             key={index}
