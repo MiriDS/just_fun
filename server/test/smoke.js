@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { io } from "socket.io-client";
+import { readAppearance } from "../src/validate.js";
 
 const PORT = 5199;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -15,7 +16,6 @@ const ENV = {
   PORT: String(PORT),
   // Small enough that a third client proves the capacity path.
   MAX_PLAYERS: "2",
-  APPEARANCE_COUNT: "3",
   // Faster than the real 1s, so the sync assertion does not dominate runtime.
   SYNC_INTERVAL_MS: "300",
 };
@@ -69,7 +69,8 @@ function silence(socket, event, ms) {
   });
 }
 
-const connect = () => io(ORIGIN, { transports: ["websocket"], forceNew: true });
+const connect = (auth) =>
+  io(ORIGIN, { transports: ["websocket"], forceNew: true, auth });
 
 function startServer() {
   const child = spawn(process.execPath, [SERVER], { env: ENV, stdio: "pipe" });
@@ -109,11 +110,17 @@ try {
   const aliceWelcome = await once(alice, "welcome");
   check("welcome carries an id", typeof aliceWelcome.id === "string");
   check(
-    "welcome carries a server-assigned appearance",
+    "a player who offers no appearance is given one",
     Number.isInteger(aliceWelcome.appearance) &&
       aliceWelcome.appearance >= 0 &&
-      aliceWelcome.appearance < 3,
+      aliceWelcome.appearance < 2 ** 31,
     `got ${aliceWelcome.appearance}`
+  );
+  check(
+    "an offered appearance that is not a whole number in range is refused",
+    [-1, 1.5, 2 ** 31, "7", null, undefined, NaN].every(
+      (value) => readAppearance(value) === null
+    ) && readAppearance(0) === 0
   );
   check(
     "welcome carries a spawn position",
@@ -122,7 +129,7 @@ try {
   check("first player sees an empty room", aliceWelcome.players.length === 0);
 
   const aliceSeesJoin = once(alice, "player-joined");
-  const bob = connect();
+  const bob = connect({ appearance: 123456 });
   sockets.push(bob);
   const [bobWelcome, joined] = await Promise.all([
     once(bob, "welcome"),
@@ -133,6 +140,11 @@ try {
     "the room is told about the newcomer",
     joined.id === bobWelcome.id,
     `${joined.id} vs ${bobWelcome.id}`
+  );
+  check(
+    "an offered appearance is kept, and relayed to the room",
+    bobWelcome.appearance === 123456 && joined.appearance === 123456,
+    `welcome ${bobWelcome.appearance}, joined ${joined.appearance}`
   );
 
   const gap = Math.hypot(
@@ -152,6 +164,17 @@ try {
       JSON.stringify(move.from) === "[1,2]",
     JSON.stringify(move)
   );
+  check("a plain click walks", move.run === false, JSON.stringify(move));
+
+  const aliceSeesRun = once(alice, "move");
+  bob.emit("move", { target: [5, 6], from: [4, 6], run: true });
+  const run = await aliceSeesRun;
+  check("a double-click runs, for everyone", run.run === true, JSON.stringify(run));
+
+  const aliceSeesSloppyRun = once(alice, "move");
+  bob.emit("move", { target: [5, 7], from: [5, 6], run: "yes" });
+  const sloppy = await aliceSeesSloppyRun;
+  check("anything but true is a walk", sloppy.run === false, JSON.stringify(sloppy));
 
   const aliceSeesClamped = once(alice, "move");
   bob.emit("move", { target: [9999, -9999], from: [0, 0] });

@@ -26,11 +26,11 @@ export function RemotePlayers({ players, motions, messages, muted }) {
         return (
           <Avatar
             key={player.id}
-            // `appearance` is already on the player record, assigned by the
-            // server. v1 renders one look for everyone; wiring it up is what
-            // step 5 of the plan is for.
             position-y={-0.5}
             motion={motion}
+            // Their skin, idle and dance, as the server relayed them — the
+            // same number every other browser in the room was given.
+            appearance={player.appearance}
           >
             {!muted && message && (
               <ChatBubble key={message.at} text={message.text} />

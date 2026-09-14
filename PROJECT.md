@@ -23,6 +23,7 @@ Live repo: `git@github.com:MiriDS/just_fun.git` · deployed as a static bundle.
 npm run dev       # http://localhost:5180   (port pinned in vite.config.js)
 npm run build     # -> dist/, then pre-compresses it (.gz/.br) for the server
 npm run preview   # http://localhost:5181
+npm run snapshots # re-render public/pages/snapshots/ after editing a page
 
 npm --prefix server run dev     # presence server on :5183
 npm --prefix server run smoke   # its 29 protocol checks
@@ -79,11 +80,12 @@ Everything else is derived each frame:
 | Constant | Value | Meaning |
 |---|---|---|
 | `WALK_SPEED` | 1.6 | units/sec |
-| `RUN_SPEED` | 4.4 | units/sec |
-| `RUN_DISTANCE` | 3.5 | further than this, break into a run |
+| `RUN_SPEED` | 4.4 | units/sec, when the click was a double-click |
+| `DOUBLE_CLICK_MS` | 400 | in `Experience.jsx`: a floor click this soon after the last one runs |
 | `TURN_SPEED` | 10 | how fast the avatar swings to face the target |
 | `ARRIVAL_DISTANCE` | 0.05 | close enough; stop |
 | `IDLE_DANCE_DELAY` | 60 | seconds standing still before it dances |
+| `DANCE_LOOPS` | 2 | plays of the dance before it returns to Idle and the 60s wait restarts |
 
 Because motion is a pure function of `target` + current position + these
 constants, **any client can reproduce any other client's walk, given only the
@@ -101,8 +103,9 @@ its owner was a second ago.
 Each Avatar gets its own `SkeletonUtils.clone` of the model. Geometry and
 materials stay shared, so a second visitor costs a skeleton, not a download.
 
-Animations are Mixamo FBX clips (`Idle`, `Walking`, `Running`, `Dance`,
-`Crouch`) retargeted onto `Animated.glb`, cross-faded over 0.5s.
+Animations are Mixamo FBX clips cross-faded over 0.5s: everyone shares
+`Walking` and `Running`, and each player's idle and dance are picked by their
+appearance (see "Appearance" below). `Crouch.fbx` is no longer loaded.
 
 ### Camera
 
@@ -123,8 +126,25 @@ Animations are Mixamo FBX clips (`Idle`, `Walking`, `Running`, `Dance`,
 ### Billboards
 
 Each is `Billboard.glb` plus an extruded `Text3D` label, a floor marker ring you
-click to focus, and a drei `<Html transform>` iframe of a real page from
-`public/pages/`. The iframe is only made interactive when that board is focused.
+click to focus, and its page from `public/pages/`.
+
+**Only the focused board has a live iframe.** The others show a PNG of their
+page (`public/pages/snapshots/`, made by `npm run snapshots` with headless
+Chrome — rerun it after editing a page). Four drei `<Html transform
+occlude="blending">` iframes were restyled every frame and composited under a
+transparent canvas, which was the prime suspect for the scene freezing on fast
+Windows PCs. The snapshot stays under the live page, and `occlude` is only
+switched on once the iframe has loaded, so neither the fly-in nor the fly-out
+shows a blank panel.
+
+### Render loop
+
+The Canvas is `frameloop="never"`, driven by `FrameLimiter.jsx` at **60fps
+max** rather than once per display refresh (a 240Hz monitor was asking for 4×
+the work). `?fps=N` overrides the cap and `?fps=0` removes it, for A/B testing
+on a machine that misbehaves. Frames slower than 250ms are logged as
+`[scene] a frame took …ms`, and `watchRenderer.js` logs the GPU string and any
+WebGL context loss — ask for the console output with any freeze report.
 
 Escape exits focus, but once the user clicks *into* the iframe, keyboard focus
 moves inside it and our `keydown` stops firing — so the pages post
@@ -257,6 +277,15 @@ need current state. Correct it with a low-rate channel: each client reports its
 true position ~1×/sec, the server rebroadcasts, and remote avatars **ease**
 toward the correction rather than snapping to it.
 
+**Only resting positions are reported.** A client skips the report while its
+own avatar still has a target, and an avatar drops its target on arrival. Both
+halves matter: a mid-walk report reaches other browsers up to ~2s late (1s
+client tick plus 1s server batch), and when one landed after the remote copy
+had already arrived, the copy eased back toward the stale point, walked back to
+its still-set target, eased back again — flickering Idle/Walking every couple of
+frames until the next report. Measured before the fix: 152 animation switches
+on the viewer over four walks, against ~8 expected.
+
 ### Decisions taken
 
 | Decision | Choice | Why |
@@ -274,11 +303,12 @@ means running rapier on the server and streaming transforms, which would become
 the bandwidth hog of the whole system. So: only the local player gets a
 kinematic body; remote avatars walk through the clutter. Nobody notices.
 
-**Why the server assigns appearance.** If each client rolls its own random
-outfit, two viewers disagree about what a player is wearing and a reconnecting
-player changes clothes. `appearance` is in the join payload from day one, as a
-server-assigned integer seed, even though v1 renders one look for everyone.
-Costs nothing now; avoids a protocol change later.
+**Why the client rolls appearance but the server relays it.** If each client
+rolled a look for *other* players, two viewers would disagree about what
+someone is wearing. So a player rolls only their own, once per page load, and
+everyone else hears it from the server. Waiting for the server to pick instead
+would mean the local avatar loading one skin and then swapping to another when
+the socket connected. See "Appearance" in the build order below.
 
 ### Hazard: `Avatar.jsx` breaks if mounted twice
 
@@ -298,7 +328,7 @@ pass. Cap rendered players and let only nearby ones cast shadows.
 
 Client → server:
 
-- `move` `{ target: [x, z], from: [x, z] }`
+- `move` `{ target: [x, z], from: [x, z], run }` — `run` true for a double-click
 - `sync` `{ position: [x, z] }` — about 1Hz
 - `chat` `{ text }` — one line, trimmed and capped by the server
 
@@ -307,7 +337,7 @@ Server → client:
 - `welcome` `{ id, appearance, position, players: [...] }` — snapshot on join
 - `player-joined` `{ id, appearance, position, target }`
 - `player-left` `{ id }`
-- `move` `{ id, target, from }`
+- `move` `{ id, target, from, run }`
 - `sync` `{ players: [{ id, position }] }` — batched, ~1Hz, movers only
 - `chat` `{ id, text }` — to everyone **including the sender**
 - `full` — at capacity, followed by a disconnect
@@ -320,11 +350,38 @@ Server → client:
 2. ~~Server + join/leave~~ — done, `../just_fun_server`, 23 smoke tests.
 3. ~~Broadcast `move`; remote avatars walk~~ — done.
 4. ~~1Hz sync + easing~~ — done.
-5. **Next:** outfits. The plumbing is already there — the server assigns an
-   `appearance` integer, `usePresence` keeps it on each player record, and
-   `RemotePlayers` is where it would be passed to `Avatar`. What is missing is
-   the textures and a swap inside `Avatar`, plus raising `APPEARANCE_COUNT` on
-   the server to match.
+5. ~~Outfits~~ — done. Every player gets a random skin, idle and dance; see
+   "Appearance" below.
+
+### Appearance
+
+`src/components/appearance.js` lists the skins (`SKINS`), idles (`IDLES`) and
+dances (`DANCES`). A player's look is one integer, `appearance`, split into one
+pick from each list as mixed-radix digits (`decodeAppearance`).
+
+- **Rolled by the client, relayed by the server.** Each page rolls
+  `LOCAL_APPEARANCE` once and offers it in the socket handshake
+  (`auth: { appearance }`). The server keeps it if it is a whole number in
+  `[0, 2^31)`, rolls its own otherwise, and sends it to everyone. So viewers
+  never disagree, and your own avatar is dressed before the socket opens and
+  never changes clothes on connecting.
+- **Adding a skin or an animation is one line** in `appearance.js`. The server
+  never needs to know how many there are.
+- **Any animation plays on any skin.** Every skin is the same Avaturn body in a
+  different outfit, on one 52-bone skeleton (`Hips`, `Spine`, …). The FBX files
+  are Mixamo exports *without skin*: bone tracks only, no mesh, bound to a
+  skin by bone name at runtime. New animations must use the same plain bone
+  names — a `mixamorig:` prefix will not bind.
+- **Skins load per player.** `Avatar` is split: the outer component walks and
+  never suspends; `Body` loads the skin and clips inside its own `Suspense`, so
+  someone arriving in a skin nobody has loaded yet pops in when it is ready
+  without blanking the scene. Only the local player's picks are preloaded.
+  drei's `Loader` is unmounted after the first load (`loaderRetired` in
+  `App.jsx`), or it would cover the scene every time a new skin loaded.
+- **Skins must be compressed.** `public/models/*.glb` are Draco meshes with WebP
+  textures, ~1.1MB each. The uncompressed originals are in `models-src/`
+  (git-ignored). To add one:
+  `npx @gltf-transform/cli dedup in.glb a.glb && npx @gltf-transform/cli prune a.glb b.glb && npx @gltf-transform/cli webp b.glb c.glb && npx @gltf-transform/cli draco c.glb public/models/out.glb`.
 
 ### Chat
 

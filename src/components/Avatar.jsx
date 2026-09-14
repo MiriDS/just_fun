@@ -1,19 +1,37 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAnimations, useFBX, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils";
 import * as THREE from "three";
+import {
+  LOCAL_APPEARANCE,
+  RUNNING,
+  WALKING,
+  decodeAppearance,
+} from "./appearance";
 import { isBlocked } from "./billboards";
 
 const WALK_SPEED = 1.6; // world units per second
+// Used when the click that set the target was a double-click — see
+// `motion.run`.
 const RUN_SPEED = 4.4;
-// Anything further than this is worth breaking into a run for. Dropping back
-// to a walk inside it also gives a natural deceleration on approach.
-const RUN_DISTANCE = 3.5;
 const TURN_SPEED = 10; // how fast the avatar swings around to face the target
 const ARRIVAL_DISTANCE = 0.05;
-// How long the avatar stands around before amusing itself.
+// Seconds standing still before the avatar amuses itself with a dance.
 const IDLE_DANCE_DELAY = 60;
+// How many times the dance plays through before the avatar goes back to Idle
+// and the wait above starts over.
+const DANCE_LOOPS = 2;
+// Seconds to cross-fade from one clip to the next.
+const FADE = 0.5;
 
 // How fast a standing avatar slides onto a network correction.
 const CORRECTION_RATE = 3;
@@ -36,6 +54,8 @@ const direction = new THREE.Vector3();
  * changes on every packet, none of which is worth a re-render of the scene.
  *
  * - `target`     where to walk, as [x, z], or null to stand still.
+ * - `run`        whether to run there rather than walk. Set together with
+ *                `target`, true when the click was a double-click.
  * - `origin`     an exact position to be adopted whole, not eased onto: a
  *                spawn point, or the place a remote player was standing when
  *                they clicked. Consumed once, then cleared.
@@ -44,6 +64,7 @@ const direction = new THREE.Vector3();
  */
 export const createMotion = (origin = null) => ({
   target: null,
+  run: false,
   origin,
   correction: null,
 });
@@ -57,8 +78,18 @@ function lerpAngle(current, target, t) {
   return current + delta * t;
 }
 
-export function Avatar({ motion, positionRef, children, ...props }) {
-  const { scene } = useGLTF("/models/Animated.glb");
+/**
+ * What you see of a player: their skin, and the clips it plays. Split out of
+ * Avatar so that a skin still downloading suspends only this — the avatar it
+ * belongs to keeps walking, keeps its chat bubble and keeps the camera's
+ * attention, and the character simply appears once its model is in.
+ */
+function Body({ appearance, animation, onDanceFinished }) {
+  const { skin, idle, dance } = useMemo(
+    () => decodeAppearance(appearance),
+    [appearance]
+  );
+  const { scene } = useGLTF(skin);
 
   // A skeleton cannot be in two places at once: mounting the loader's own
   // `nodes.Hips` in a second Avatar re-parents the bones out of the first and
@@ -73,38 +104,39 @@ export function Avatar({ motion, positionRef, children, ...props }) {
     return copy;
   }, [scene]);
 
-  const { animations: idleAnimation } = useFBX("/models/Idle.fbx");
-  const { animations: walkingAnimation } = useFBX("/models/Walking.fbx");
-  const { animations: runningAnimation } = useFBX("/models/Running.fbx");
-  const { animations: danceAnimation } = useFBX("/models/Dance.fbx");
-  const { animations: crouchAnimation } = useFBX("/models/Crouch.fbx");
+  const { animations: idleAnimation } = useFBX(idle);
+  const { animations: walkingAnimation } = useFBX(WALKING);
+  const { animations: runningAnimation } = useFBX(RUNNING);
+  const { animations: danceAnimation } = useFBX(dance);
 
   // Memoised because useAnimations uncaches and rebuilds every action
   // whenever this array's identity changes — which, as a bare literal, was
   // once per render of every avatar on screen.
   const clips = useMemo(() => {
+    // Named by role, on the clip drei caches and every avatar shares. Safe
+    // because a file only ever plays one role: an idle is never somebody
+    // else's dance.
     idleAnimation[0].name = "Idle";
     walkingAnimation[0].name = "Walking";
     runningAnimation[0].name = "Running";
     danceAnimation[0].name = "Dance";
-    crouchAnimation[0].name = "Crouch";
 
     const clips = [
       idleAnimation[0],
       walkingAnimation[0],
       runningAnimation[0],
       danceAnimation[0],
-      crouchAnimation[0],
     ];
 
     // Mixamo exports one track per clip for the armature root — named
-    // "Armature_1" — and our character's armature is called "Armature", so it
-    // binds to nothing and three warns about it. 53 of the 54 tracks are
-    // bones and bind fine; dropping the odd one out is the difference between
-    // a clean console and one warning per clip per avatar in the room.
+    // "Armature_1" — and our characters' armature is called "Armature", so it
+    // binds to nothing and three warns about it. The rest are bones and bind
+    // fine; dropping the odd one out is the difference between a clean
+    // console and one warning per clip per avatar in the room.
     //
-    // The clips come from drei's cache and are shared by every avatar, so
-    // this runs once and is a no-op for everyone after.
+    // Every skin has the same skeleton, so filtering the shared clips against
+    // whichever skin gets here first is right for all of them, and a no-op
+    // for everyone after.
     const nodes = new Set();
     model.traverse((child) => nodes.add(child.name));
     for (const clip of clips) {
@@ -114,34 +146,67 @@ export function Avatar({ motion, positionRef, children, ...props }) {
     }
 
     return clips;
-  }, [
-    model,
-    idleAnimation,
-    walkingAnimation,
-    runningAnimation,
-    danceAnimation,
-    crouchAnimation,
-  ]);
+  }, [model, idleAnimation, walkingAnimation, runningAnimation, danceAnimation]);
 
-  const group = useRef();
-  const { actions } = useAnimations(clips, group);
-
-  const [animation, setAnimation] = useState("Idle");
-  const idleFor = useRef(0);
+  const root = useRef();
+  const { actions, mixer } = useAnimations(clips, root);
+  const started = useRef(false);
 
   useEffect(() => {
     const action = actions[animation];
     if (!action) return;
 
-    action.reset().fadeIn(0.5).play();
+    action.reset();
+
+    // The dance is a turn with an end, not a state to sit in: it plays
+    // DANCE_LOOPS times and then tells Avatar, which goes back to Idle and
+    // starts the wait over. Held on its last frame once done, so the fade
+    // into Idle blends out of the final pose rather than out of a T-pose.
+    const dancing = animation === "Dance";
+    const handleFinished = (event) => {
+      if (event.action === action) onDanceFinished();
+    };
+    if (dancing) {
+      action.setLoop(THREE.LoopRepeat, DANCE_LOOPS);
+      action.clampWhenFinished = true;
+      mixer.addEventListener("finished", handleFinished);
+    }
+
+    // The first clip snaps straight on. Fading in from the bind pose would
+    // hold a T-pose on screen for half a second every time someone appears.
+    if (started.current) action.fadeIn(FADE);
+    action.play();
+    started.current = true;
 
     // Held in a variable rather than looked up a second time. drei's action
     // getter returns undefined once the group ref is detached, and React
     // detaches it before this cleanup runs on unmount — so the lookup that
     // used to be here threw, and one player leaving took every other
     // player's canvas down with it.
-    return () => action.fadeOut(0.5);
-  }, [animation, actions]);
+    return () => {
+      if (dancing) mixer.removeEventListener("finished", handleFinished);
+      action.fadeOut(FADE);
+    };
+  }, [animation, actions, mixer, onDanceFinished]);
+
+  return (
+    <group ref={root} dispose={null}>
+      <primitive object={model} />
+    </group>
+  );
+}
+
+export function Avatar({ motion, positionRef, appearance, children, ...props }) {
+  const group = useRef();
+  const [animation, setAnimation] = useState("Idle");
+  const idleFor = useRef(0);
+
+  // The dance has played its loops: back to Idle, and the minute's wait for
+  // the next one starts from zero.
+  const handleDanceFinished = useCallback(() => {
+    idleFor.current = 0;
+    setAnimation("Idle");
+  }, []);
 
   // Before the first paint, so a remote player never shows up at the origin
   // for a frame on their way to their spawn point.
@@ -175,8 +240,15 @@ export function Avatar({ motion, positionRef, children, ...props }) {
       const distance = direction.length();
       moving = distance >= ARRIVAL_DISTANCE;
 
+      // Arrived: the walk is over, so let the target go. Kept, it would turn
+      // any later nudge — a network correction easing a remote player a few
+      // centimetres off the spot — into a fresh walk back onto it, then another
+      // nudge, then another walk: the avatar flickering between Idle and
+      // Walking every couple of frames.
+      if (!moving) motion.target = null;
+
       if (moving) {
-        const running = distance > RUN_DISTANCE;
+        const running = motion.run === true;
         const speed = running ? RUN_SPEED : WALK_SPEED;
 
         direction.normalize();
@@ -256,6 +328,8 @@ export function Avatar({ motion, positionRef, children, ...props }) {
     if (moving) {
       idleFor.current = 0;
     } else {
+      // Past the wait this keeps asking for Dance, and keeps getting it, until
+      // the dance finishes its loops and handleDanceFinished zeroes the wait.
       idleFor.current += delta;
       const resting = idleFor.current > IDLE_DANCE_DELAY ? "Dance" : "Idle";
       if (animation !== resting) setAnimation(resting);
@@ -267,7 +341,17 @@ export function Avatar({ motion, positionRef, children, ...props }) {
 
   return (
     <group ref={group} {...props} dispose={null}>
-      <primitive object={model} />
+      {/* Keyed by appearance, so a different look is a different character
+          with its own skeleton and mixer, never the old one's actions
+          pointed at new bones. */}
+      <Suspense fallback={null}>
+        <Body
+          key={appearance}
+          appearance={appearance}
+          animation={animation}
+          onDanceFinished={handleDanceFinished}
+        />
+      </Suspense>
       {/* Anything mounted here rides with the avatar — a chat bubble sits on
           the group's own axis, so turning to walk never swings it around. */}
       {children}
@@ -275,4 +359,9 @@ export function Avatar({ motion, positionRef, children, ...props }) {
   );
 }
 
-useGLTF.preload("/models/Animated.glb");
+// Everything this visitor's own avatar needs, fetched with the rest of the
+// scene so it is standing there when the loading screen lifts. Other people's
+// skins and moves load as they arrive.
+const own = decodeAppearance(LOCAL_APPEARANCE);
+useGLTF.preload(own.skin);
+for (const url of [own.idle, own.dance, WALKING, RUNNING]) useFBX.preload(url);

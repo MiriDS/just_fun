@@ -1,5 +1,8 @@
 node_modules
 dist
+# Uncompressed originals of public/models, kept for re-exporting. Too big to
+# commit, and nothing in public/ so Vite never ships them.
+models-src
 dist-ssr
 *.local
 

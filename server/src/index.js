@@ -4,7 +4,12 @@ import sirv from "sirv";
 import { config } from "./config.js";
 import { World } from "./world.js";
 import { serialize } from "./world.js";
-import { rateLimiter, readMessage, readPoint } from "./validate.js";
+import {
+  rateLimiter,
+  readAppearance,
+  readMessage,
+  readPoint,
+} from "./validate.js";
 
 const log = (...parts) =>
   console.log(new Date().toISOString(), ...parts);
@@ -83,7 +88,10 @@ io.on("connection", (socket) => {
     return;
   }
 
-  const player = world.add(socket.id);
+  const player = world.add(
+    socket.id,
+    readAppearance(socket.handshake.auth?.appearance)
+  );
   log(`joined ${socket.id} (${world.size}/${config.maxPlayers})`);
 
   // The newcomer needs the whole room; the room only needs the newcomer.
@@ -112,9 +120,17 @@ io.on("connection", (socket) => {
 
     player.position = from;
     player.target = target;
+    // A double-click. Anything but a literal true is a walk, which is also
+    // what a client from before running existed sends by leaving it out.
+    player.run = payload.run === true;
     player.dirty = false;
 
-    socket.broadcast.emit("move", { id: player.id, target, from });
+    socket.broadcast.emit("move", {
+      id: player.id,
+      target,
+      from,
+      run: player.run,
+    });
   });
 
   // The drift correction: the sender's true position, roughly once a second.
@@ -160,7 +176,7 @@ http.listen(config.port, () => {
   log(`listening on :${config.port}`);
   log(`origins ${config.origins ? config.origins.join(", ") : "any"}`);
   log(`static ${config.staticDir ?? "none (socket only)"}`);
-  log(`capacity ${config.maxPlayers}, ${config.appearanceCount} appearance(s)`);
+  log(`capacity ${config.maxPlayers}`);
 });
 
 // Without this a container restart drops every socket without a close frame,

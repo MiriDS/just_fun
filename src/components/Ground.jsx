@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Grid, MeshReflectorMaterial } from "@react-three/drei";
 import { folder, useControls } from "leva";
 
@@ -52,6 +53,11 @@ export function Ground() {
       }),
     });
 
+  const blur = useMemo(
+    () => [reflectionBlur, reflectionBlur / 4],
+    [reflectionBlur]
+  );
+
   return (
     <>
       <mesh rotation-x={-Math.PI / 2} position-y={REFLECTOR_Y}>
@@ -62,7 +68,12 @@ export function Ground() {
             // Blurring the reflection vertically much less than horizontally
             // is what reads as a wet, slightly rough surface rather than a
             // polished mirror.
-            blur={[reflectionBlur, reflectionBlur / 4]}
+            //
+            // Memoised: drei rebuilds four 1024² half-float render targets
+            // whenever this array's identity changes, and never disposes the
+            // old ones. As a bare literal that was ~34MB of VRAM on every
+            // render of the scene — every keystroke in the chat box.
+            blur={blur}
             mixBlur={1}
             mixStrength={reflectionStrength}
             roughness={0.85}

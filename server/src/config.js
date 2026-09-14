@@ -40,12 +40,6 @@ export const config = {
   // silently degrading it for everyone already in.
   maxPlayers: number(process.env.MAX_PLAYERS, 20),
 
-  // How many outfits the client knows how to render. The server picks one per
-  // player and it is fixed for that session — clients must never roll their
-  // own, or two viewers would disagree about what someone is wearing.
-  // v1 renders a single look, so the pool is 1.
-  appearanceCount: number(process.env.APPEARANCE_COUNT, 1),
-
   // Movement is replicated as intent ("walk to x,z"), which every client
   // reproduces exactly. This slower channel only exists to correct the drift
   // that builds up in throttled background tabs.

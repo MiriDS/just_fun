@@ -22,6 +22,22 @@ export function readPoint(value, bound) {
   return [clamp(x, bound), clamp(z, bound)];
 }
 
+// How many appearances there are. A seed rather than an outfit count: the
+// client splits it into a skin, an idle and a dance, so adding any of those
+// needs no change here. Matches APPEARANCE_RANGE in src/components/appearance.js.
+export const APPEARANCE_RANGE = 2 ** 31;
+
+/**
+ * Reads the appearance a client rolled for itself and offered on connect: a
+ * whole number in `[0, APPEARANCE_RANGE)`. Anything else is null, and the
+ * server rolls one for them instead.
+ */
+export function readAppearance(value) {
+  return Number.isInteger(value) && value >= 0 && value < APPEARANCE_RANGE
+    ? value
+    : null;
+}
+
 // Everything that has no business in a single line of text drawn over an
 // avatar's head: C0/C1 control characters, the bidi overrides that can garble
 // the rest of a viewer's UI, and the zero-width characters used to pad a

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LOCAL_APPEARANCE } from "./appearance";
 import { createMotion } from "./Avatar";
 
 // Where the presence server is. Vite bakes this in at build time, so it is a
@@ -18,9 +19,10 @@ const SERVER_URL =
       ? "http://localhost:5183"
       : undefined;
 
-// How often we tell the server where we really are. Everyone else is walking
-// their own copy of us from our last click, and this is what stops the two
-// drifting apart when a tab is backgrounded and its frames are throttled.
+// How often we check whether to tell the server where we really are. Everyone
+// else is walking their own copy of us from our last click, and this is what
+// stops the two drifting apart when a tab is backgrounded and its frames are
+// throttled. We only report once standing still — see the interval below.
 const SYNC_INTERVAL = 1000;
 // Not worth a packet: we have not meaningfully moved since the last report.
 const SYNC_EPSILON = 0.05;
@@ -53,6 +55,9 @@ export function usePresence({ motion, positionRef }) {
   const [players, setPlayers] = useState([]);
   const [connected, setConnected] = useState(false);
   const [selfId, setSelfId] = useState(null);
+  // Our own look. Starts as this page's roll, which is what we offer the
+  // server, so in practice the welcome only ever confirms it.
+  const [selfAppearance, setSelfAppearance] = useState(LOCAL_APPEARANCE);
   // Keyed by player id, one message each: a second message from the same
   // person replaces the first rather than stacking up.
   const [messages, setMessages] = useState({});
@@ -96,6 +101,7 @@ export function usePresence({ motion, positionRef }) {
     const remember = (player) => {
       const remote = createMotion(player.position);
       remote.target = player.target;
+      remote.run = player.run === true;
       motions.set(player.id, remote);
       return { id: player.id, appearance: player.appearance };
     };
@@ -112,6 +118,10 @@ export function usePresence({ motion, positionRef }) {
         // down must not become a console full of retries.
         reconnectionAttempts: 5,
         timeout: 4000,
+        // The look this page rolled. Offered rather than waited for, so our
+        // avatar is dressed before the socket opens and connecting never
+        // changes its clothes; the server relays it to everyone else.
+        auth: { appearance: LOCAL_APPEARANCE },
       });
       socket.current = connection;
 
@@ -125,6 +135,7 @@ export function usePresence({ motion, positionRef }) {
         motion.origin = payload.position;
 
         setSelfId(payload.id);
+        setSelfAppearance(payload.appearance);
         motions.clear();
         setPlayers(payload.players.map(remember));
       });
@@ -143,9 +154,13 @@ export function usePresence({ motion, positionRef }) {
         setPlayers((current) => current.filter((other) => other.id !== id));
       });
 
-      connection.on("move", ({ id, target, from }) => {
+      connection.on("move", ({ id, target, from, run }) => {
         const remote = motions.get(id);
         if (!remote) return;
+
+        // Walking and running cover the ground at different speeds, so the
+        // walk only stays reproducible if everyone knows which it is.
+        remote.run = run === true;
 
         // `from` is where they actually stood as they clicked, so the walk
         // starts from the same place for everyone rather than from wherever
@@ -183,6 +198,7 @@ export function usePresence({ motion, positionRef }) {
       setMessages({});
       setConnected(false);
       setSelfId(null);
+      setSelfAppearance(LOCAL_APPEARANCE);
     };
   }, [motion, motions, forget, say]);
 
@@ -194,6 +210,14 @@ export function usePresence({ motion, positionRef }) {
     const timer = setInterval(() => {
       const connection = socket.current;
       if (!connection?.connected || !positionRef.current) return;
+
+      // Only once we have come to rest. Mid-walk, everyone else is already
+      // replaying the same walk from our click, so a position taken now can
+      // only be stale by the time it reaches them — the server batches it for
+      // up to another second. One that landed after their copy of us had
+      // arrived used to drag it back off its target, and it would flicker
+      // between walking back and being dragged away again.
+      if (motion.target) return;
 
       const position = [positionRef.current.x, positionRef.current.z];
       const still =
@@ -207,10 +231,10 @@ export function usePresence({ motion, positionRef }) {
     }, SYNC_INTERVAL);
 
     return () => clearInterval(timer);
-  }, [positionRef]);
+  }, [motion, positionRef]);
 
-  const sendMove = useCallback((target, from) => {
-    socket.current?.emit("move", { target, from: [from.x, from.z] });
+  const sendMove = useCallback((target, from, run = false) => {
+    socket.current?.emit("move", { target, from: [from.x, from.z], run });
   }, []);
 
   // No optimistic bubble: the server trims the text and echoes it back, and
@@ -220,5 +244,14 @@ export function usePresence({ motion, positionRef }) {
     socket.current?.emit("chat", { text });
   }, []);
 
-  return { players, motions, messages, selfId, connected, sendMove, sendChat };
+  return {
+    players,
+    motions,
+    messages,
+    selfId,
+    selfAppearance,
+    connected,
+    sendMove,
+    sendChat,
+  };
 }

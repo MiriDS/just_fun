@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   AdditiveBlending,
   BufferAttribute,
   CylinderGeometry,
   DoubleSide,
   Object3D,
+  SRGBColorSpace,
 } from "three";
-import { Center, Html, Text3D, useGLTF } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
+import { Center, Html, Text3D, useGLTF, useTexture } from "@react-three/drei";
+import { BILLBOARDS } from "./billboards";
 import { useClickWithoutDrag } from "./useClickWithoutDrag";
 
 // Measured off the "Default" (pure white) plane in Billboard.glb, in the
@@ -156,14 +159,105 @@ function PanelLight({ settings }) {
   );
 }
 
+// Behind the live page's occlusion plane, so the two never z-fight while the
+// page is up.
+const SNAPSHOT_OFFSET = FACE_OFFSET / 2;
+
+/**
+ * The page as an image on the panel: what every board shows unless it is the
+ * one being read. A textured quad costs nothing per frame, where a live iframe
+ * is restyled every frame and composited under a transparent canvas — four of
+ * them were the most expensive thing on the page, and the likeliest reason the
+ * scene froze on fast Windows machines.
+ */
+function PageSnapshot({ src }) {
+  const texture = useTexture(src);
+  const maxAnisotropy = useThree((state) =>
+    state.gl.capabilities.getMaxAnisotropy()
+  );
+
+  // Before the first draw, so the texture uploads once. The panels are mostly
+  // seen at a glancing angle, which is what anisotropic filtering is for.
+  useLayoutEffect(() => {
+    if (
+      texture.colorSpace === SRGBColorSpace &&
+      texture.anisotropy === maxAnisotropy
+    ) {
+      return;
+    }
+    texture.colorSpace = SRGBColorSpace;
+    texture.anisotropy = maxAnisotropy;
+    texture.needsUpdate = true;
+  }, [texture, maxAnisotropy]);
+
+  return (
+    <mesh
+      position={[
+        FACE_CENTER[0],
+        FACE_CENTER[1],
+        FACE_CENTER[2] + SNAPSHOT_OFFSET,
+      ]}
+      raycast={() => null}
+    >
+      <planeGeometry args={[FACE_WIDTH, FACE_HEIGHT]} />
+      {/* Unlit, untoned and unfogged, so it matches the live page it stands
+          in for. */}
+      <meshBasicMaterial map={texture} toneMapped={false} fog={false} />
+    </mesh>
+  );
+}
+
+/**
+ * The real page: a DOM iframe projected onto the panel via CSS3D. WebGL can't
+ * sample a live document into a texture, so the page is composited over the
+ * canvas and kept in perspective by the transform.
+ */
+function LivePage({ url }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <Html
+      transform
+      // Per-pixel depth occlusion, so the avatar walking in front hides the
+      // page. Held back until the page has loaded: blending punches a hole in
+      // the canvas where the page goes, and until then that hole would show
+      // the page background instead of the snapshot underneath.
+      occlude={loaded ? "blending" : undefined}
+      position={[FACE_CENTER[0], FACE_CENTER[1], FACE_CENTER[2] + FACE_OFFSET]}
+      scale={SCREEN_SCALE}
+      // drei defaults these to ~16.7 million, which puts the panel on top of
+      // every DOM overlay we have. Kept low so the Back button and the tuning
+      // panel stay above it.
+      zIndexRange={[100, 0]}
+    >
+      <iframe
+        src={url}
+        title="Billboard"
+        onLoad={() => setLoaded(true)}
+        style={{
+          width: SCREEN_WIDTH_PX,
+          height: SCREEN_HEIGHT_PX,
+          // display:block kills the inline baseline gap that would otherwise
+          // show as a hairline strip along the bottom.
+          border: "none",
+          display: "block",
+          background: "#1c1c20",
+          opacity: loaded ? 1 : 0,
+        }}
+      />
+    </Html>
+  );
+}
+
 export function Billboard({
   url,
+  snapshot,
   label,
   standColor = "#dd0000",
   signage,
   faceRef,
   showSpot = false,
-  interactive = false,
+  live = false,
   onSpotClick,
   ...props
 }) {
@@ -292,48 +386,16 @@ export function Billboard({
         </group>
       )}
 
-      {/* A real DOM iframe projected onto the panel via CSS3D. WebGL can't
-          sample a live document into a texture, so the page is composited
-          over the canvas and kept in perspective by the transform. */}
-      {url && (
-        <Html
-          transform
-          // Per-pixel depth occlusion, so the avatar walking in front hides
-          // the page — and so it disappears when you orbit round the back.
-          occlude="blending"
-          position={[
-            FACE_CENTER[0],
-            FACE_CENTER[1],
-            FACE_CENTER[2] + FACE_OFFSET,
-          ]}
-          scale={SCREEN_SCALE}
-          // drei defaults these to ~16.7 million, which puts the panels on
-          // top of every DOM overlay we have. Kept low so the Back button
-          // and the tuning panel stay above them.
-          zIndexRange={[100, 0]}
-          style={{ pointerEvents: interactive ? "auto" : "none" }}
-        >
-          <iframe
-            src={url}
-            title="Billboard"
-            style={{
-              width: SCREEN_WIDTH_PX,
-              height: SCREEN_HEIGHT_PX,
-              // display:block kills the inline baseline gap that would
-              // otherwise show as a hairline strip along the bottom.
-              border: "none",
-              display: "block",
-              background: "#1c1c20",
-              // Only swallow pointer events once the camera has flown in;
-              // otherwise the boards would eat every orbit drag that
-              // crossed them.
-              pointerEvents: interactive ? "auto" : "none",
-            }}
-          />
-        </Html>
-      )}
+      {/* The snapshot stays up underneath the live page, so the fly-in has
+          something to show before the iframe loads and the fly-out has
+          something the moment it unmounts. */}
+      {snapshot && <PageSnapshot src={snapshot} />}
+      {url && live && <LivePage url={url} />}
     </group>
   );
 }
 
 useGLTF.preload("/models/Billboard.glb");
+for (const { snapshot } of BILLBOARDS) {
+  if (snapshot) useTexture.preload(snapshot);
+}

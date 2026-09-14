@@ -57,7 +57,7 @@ avatars **ease** toward the correction rather than snapping to it.
 
 | Event | Payload | Notes |
 |---|---|---|
-| `move` | `{ target: [x, z], from: [x, z] }` | One per click. `from` is where the sender stood as they clicked, so everyone starts the walk from the same place. |
+| `move` | `{ target: [x, z], from: [x, z], run }` | One per click. `from` is where the sender stood as they clicked, so everyone starts the walk from the same place. `run` is true for a double-click; anything else is a walk. |
 | `sync` | `{ position: [x, z] }` | ~1Hz drift correction. |
 | `chat` | `{ text }` | One line. Trimmed, tidied and capped by the server. |
 
@@ -66,18 +66,23 @@ avatars **ease** toward the correction rather than snapping to it.
 | Event | Payload | Notes |
 |---|---|---|
 | `welcome` | `{ id, appearance, position, players[] }` | Full snapshot, sent once on join. `players` excludes you. |
-| `player-joined` | `{ id, appearance, position, target }` | |
+| `player-joined` | `{ id, appearance, position, target, run }` | |
 | `player-left` | `{ id }` | |
-| `move` | `{ id, target, from }` | Relayed click. |
+| `move` | `{ id, target, from, run }` | Relayed click. |
 | `sync` | `{ players: [{ id, position }] }` | Batched, movers only, silent when nobody moved. Includes your own entry — ignore it. |
 | `chat` | `{ id, text }` | Sent to **everyone including the sender**, so every bubble holds the same server-trimmed text and nobody has to trim their own optimistically. |
 | `full` | `{ capacity }` | At capacity; a disconnect follows immediately. |
 
-`appearance` is an integer in `[0, APPEARANCE_COUNT)`, **assigned by the
-server** and fixed for the session. Clients must never roll their own, or two
-viewers would disagree about what a player is wearing and a reconnecting player
-would change clothes. v1 renders one look for everyone; the field is already
-there so adding outfits later is not a protocol change.
+`appearance` is an integer in `[0, 2^31)`, fixed for the session. The client
+rolls it once per page load and offers it on connect as
+`io(url, { auth: { appearance } })`; the server keeps it if it is a whole number
+in range, rolls one of its own otherwise, and relays it to everyone — so no two
+viewers disagree, and the player's own avatar is dressed before the socket opens
+and never changes clothes on connecting or reconnecting.
+
+It is a seed, not an outfit index: the client splits it into a skin, an idle
+and a dance (`src/components/appearance.js`), so adding a skin or an animation
+needs no server change.
 
 ## What it refuses
 

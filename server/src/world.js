@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { APPEARANCE_RANGE } from "./validate.js";
 
 // Point 0 is the world origin, because that is where the single-player scene
 // has always started and the whole arrival camera move is framed around it: a
@@ -56,17 +57,23 @@ export class World {
     return this.#players.get(id);
   }
 
-  add(id) {
+  add(id, appearance = null) {
     const player = {
       id,
-      // Assigned here, and only here. If clients rolled their own, two
-      // viewers would disagree about what a player is wearing and a
-      // reconnecting player would change clothes.
-      appearance: Math.floor(Math.random() * config.appearanceCount),
+      // Offered by the client, which rolls it once per page load: its own
+      // avatar is dressed before the socket even opens, so connecting never
+      // changes its clothes, and neither does reconnecting. Everyone else
+      // hears it from here, so no two viewers disagree. A client that offers
+      // nothing usable is given a roll of our own.
+      appearance:
+        appearance ?? Math.floor(Math.random() * APPEARANCE_RANGE),
       position: this.#freeSpawn(),
       // Null means "standing still", which is what the client's Avatar
       // already understands.
       target: null,
+      // Whether they are running to `target` rather than walking, so someone
+      // joining mid-run sees the same speed as everyone else.
+      run: false,
       // Whether this player has reported a position since the last sync
       // broadcast, so the batch only carries players who actually moved.
       dirty: false,
@@ -132,5 +139,6 @@ export function serialize(player) {
     appearance: player.appearance,
     position: player.position,
     target: player.target,
+    run: player.run,
   };
 }

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Loader, useProgress } from "@react-three/drei";
 import { Leva } from "leva";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { createMotion } from "./components/Avatar";
 import { Experience } from "./components/Experience";
+import { FrameLimiter } from "./components/FrameLimiter";
+import { watchRenderer } from "./components/watchRenderer";
 import { usePresence } from "./components/usePresence";
 
 // The tuning panel is for us, not for visitors: it shows while developing,
@@ -16,6 +18,10 @@ const SHOW_TUNER =
 // Matches the server's CHAT_MAX_LENGTH. Only an affordance — the server
 // trims anything longer regardless, and its copy is the one everybody sees.
 const CHAT_MAX_LENGTH = 120;
+
+// How long to leave drei's Loader mounted once the first load settles. It
+// fades itself out over 300ms; unmounting any sooner would cut that short.
+const LOADER_FADE_MS = 1000;
 
 function App() {
   // Index of the billboard the camera has flown into, or null when roaming.
@@ -46,6 +52,22 @@ function App() {
   // the skip hint would otherwise sit over the loading screen with nothing
   // to skip.
   const { active: loading } = useProgress();
+
+  // drei's Loader reappears whenever anything takes longer than 300ms to
+  // load — and skins now load per player, so it would put a loading screen
+  // over the scene every time somebody new walked in. It is for the first
+  // load only: retired once loading has started and then settled.
+  const loadingStarted = useRef(false);
+  const [loaderRetired, setLoaderRetired] = useState(false);
+  useEffect(() => {
+    if (loading) {
+      loadingStarted.current = true;
+      return;
+    }
+    if (loaderRetired || !loadingStarted.current) return;
+    const timer = setTimeout(() => setLoaderRetired(true), LOADER_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [loading, loaderRetired]);
 
   const { sendChat } = presence;
   const handleSend = useCallback(
@@ -90,20 +112,29 @@ function App() {
       <Canvas
         shadows
         camera={{ position: [8, 8, 8], fov: 30 }}
+        // Drawn by FrameLimiter at a capped rate rather than once per display
+        // refresh. See FrameLimiter.jsx for why.
+        frameloop="never"
+        onCreated={({ gl }) => watchRenderer(gl)}
         // Clicking the empty space around a focused panel backs out of it.
         // Worth having because Esc stops reaching us the moment the user
         // clicks into the embedded page: keyboard focus moves inside a
         // cross-origin iframe, which we cannot listen to.
         onPointerMissed={() => setFocused(null)}
       >
-        <Experience
-          focused={focused}
-          onFocusChange={setFocused}
-          onIntroDone={handleIntroDone}
-          motion={motion}
-          avatarPosition={avatarPosition}
-          presence={presence}
-        />
+        <FrameLimiter />
+        {/* A boundary of its own, so the limiter above keeps drawing if
+            anything in the scene suspends again after the first load. */}
+        <Suspense fallback={null}>
+          <Experience
+            focused={focused}
+            onFocusChange={setFocused}
+            onIntroDone={handleIntroDone}
+            motion={motion}
+            avatarPosition={avatarPosition}
+            presence={presence}
+          />
+        </Suspense>
       </Canvas>
 
       {!loading && !introDone && (
@@ -136,7 +167,7 @@ function App() {
           the page you are trying to read. */}
       <Leva hidden={!SHOW_TUNER || focused !== null} titleBar={{ title: "Scene" }} />
 
-      <Loader />
+      {!loaderRetired && <Loader />}
     </>
   );
 }

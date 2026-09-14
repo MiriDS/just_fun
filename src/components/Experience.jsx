@@ -12,6 +12,11 @@ import { RemotePlayers } from "./RemotePlayers";
 
 import { useClickWithoutDrag } from "./useClickWithoutDrag";
 
+// Two clicks on the floor closer together than this make a double-click, and
+// the avatar runs. Operating systems default to about 500ms; a little under
+// that keeps two deliberate walk clicks from being read as one run.
+const DOUBLE_CLICK_MS = 400;
+
 // Rapier inlines its WASM, which more than doubles the main bundle. Split
 // out behind its own Suspense boundary the scene paints on time and the
 // debris drops in a moment later — which is how it behaves anyway.
@@ -84,6 +89,9 @@ export const Experience = ({
   const isFocused = focused !== null;
   const ownMessage = presence.messages[presence.selfId];
 
+  // When the floor was last clicked, for telling a double-click.
+  const lastFloorClick = useRef(-Infinity);
+
   const groundHandlers = useClickWithoutDrag((event) => {
     // While reading a billboard the floor is an exit, not a walk target.
     if (isFocused) {
@@ -91,11 +99,20 @@ export const Experience = ({
       return;
     }
 
+    // A click hard on the heels of the last one runs. Timed by hand rather
+    // than with r3f's onDoubleClick, which only fires after the first click
+    // has already set off a walk; this way that walk is simply upgraded. It
+    // also means clicking again and again to steer keeps running.
+    const now = performance.now();
+    const run = now - lastFloorClick.current < DOUBLE_CLICK_MS;
+    lastFloorClick.current = now;
+
     const target = [event.point.x, event.point.z];
     motion.target = target;
+    motion.run = run;
     // The click is the whole message: every other browser walks its copy of
     // us with the same code and arrives at the same place.
-    presence.sendMove(target, avatarPosition.current);
+    presence.sendMove(target, avatarPosition.current, run);
   });
 
   return (
@@ -106,7 +123,12 @@ export const Experience = ({
         <Scatter targetRef={avatarPosition} />
       </Suspense>
 
-      <Avatar position-y={-0.5} motion={motion} positionRef={avatarPosition}>
+      <Avatar
+        position-y={-0.5}
+        motion={motion}
+        positionRef={avatarPosition}
+        appearance={presence.selfAppearance}
+      >
         {!isFocused && ownMessage && (
           <ChatBubble key={ownMessage.at} text={ownMessage.text} />
         )}
@@ -129,7 +151,9 @@ export const Experience = ({
             signage={signage}
             faceRef={(node) => (faces.current[index] = node)}
             showSpot={!isFocused}
-            interactive={focused === index}
+            // Only the board being read gets a live page; the rest show
+            // their snapshot.
+            live={focused === index}
             onSpotClick={() => onFocusChange(index)}
           />
         ))}

@@ -8,18 +8,33 @@ export const BILLBOARD_SCALE = 0.02;
 // The floor, repeated from the scene: everything below is world-space.
 const GROUND_Y = -0.5;
 
+// `snapshot` is the page rendered to an image, shown on the panel whenever
+// the board is not being read. Regenerate with `npm run snapshots` after
+// editing a page.
 export const BILLBOARDS = [
-  { position: [0, 0, -100], label: "about", url: "/pages/about.html" },
+  {
+    position: [0, 0, -100],
+    label: "about",
+    url: "/pages/about.html",
+    snapshot: "/pages/snapshots/about.png",
+  },
   {
     position: [250, 0, -100],
     label: "experience",
     url: "/pages/experience.html",
+    snapshot: "/pages/snapshots/experience.png",
   },
-  { position: [500, 0, -100], label: "skills", url: "/pages/skills.html" },
+  {
+    position: [500, 0, -100],
+    label: "skills",
+    url: "/pages/skills.html",
+    snapshot: "/pages/snapshots/skills.png",
+  },
   {
     position: [750, 0, -100],
     label: "portfolio",
     url: "/pages/portfolio.html",
+    snapshot: "/pages/snapshots/portfolio.png",
   },
 ];
 
